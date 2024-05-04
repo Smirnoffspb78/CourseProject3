@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 
+import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -51,8 +52,8 @@ public class SendingMessagesOfClients extends Thread {
         this.connectionHandler = requireNonNull(connectionHandler, "connectionHandler=null");
         this.message = requireNonNull(message, "message=null");
         this.allSending = allSending;
-        this.connectionHandlers = connectionHandlers;
-        this.messages = messages;
+        this.connectionHandlers = requireNonNull(connectionHandlers);
+        this.messages = requireNonNull(messages);
     }
 
     /**
@@ -61,17 +62,19 @@ public class SendingMessagesOfClients extends Thread {
     @Override
     public void run() {
         if (allSending) {
-            messages.forEach(messageAll -> {
-                connectionHandlers.stream().filter(connectionHandlerAll -> !Objects.equals(this.connectionHandler, connectionHandlerAll))
-                        .forEach(connectionHandlerAll -> {
-                    try {
-                        connectionHandlerAll.send(messageAll);
-                    } catch (IOException e) {
-                        connectionHandlers.remove(connectionHandlerAll);
-                    }
-                });
-                messages.remove(messageAll);
-            });
+            messages.stream().filter(Objects::nonNull)
+                    .forEach(messageAll -> {
+                        connectionHandlers.stream()
+                                .filter(connectionHandlerAll -> nonNull(connectionHandlerAll) && !Objects.equals(this.connectionHandler, connectionHandlerAll))
+                                .forEach(connectionHandlerAll -> {
+                                    try {
+                                        connectionHandlerAll.send(messageAll);
+                                    } catch (IOException e) {
+                                        connectionHandlers.remove(connectionHandlerAll);
+                                    }
+                                });
+                        messages.remove(messageAll);
+                    });
         } else {
             try {
                 connectionHandler.send(message);

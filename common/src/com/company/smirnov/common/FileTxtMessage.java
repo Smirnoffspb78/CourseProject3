@@ -11,17 +11,31 @@ import static java.util.Objects.requireNonNull;
  * Отправляет файлы
  */
 public class FileTxtMessage extends Message {
+    /**
+     * Наименование файла.
+     */
     private final String fileName;
-    private String textFile = "";
+    /**
+     * Размер файла.
+     */
     private final long sizeFile;
+    /**
+     * Описание файла.
+     */
+    private final String descriptionFile;
+    /**
+     * Содержимое файла
+     */
+    private String textFile = "";
 
     /**
      * Конструктор создает сообщение.
      *
      * @param sender Отправитель
      */
-    public FileTxtMessage(String sender, String pathFile) {
+    public FileTxtMessage(String sender, String pathFile, String descriptionFile) {
         super(sender);
+        this.descriptionFile = requireNonNull(descriptionFile);
         if (nonNull(pathFile)) {
             if (pathFile.isBlank()) {
                 throw new IllegalArgumentException("pathFile is blank");
@@ -32,10 +46,10 @@ public class FileTxtMessage extends Message {
         String[] namesTxt = pathFile.split("/");
         fileName = namesTxt[namesTxt.length - 1];
         sizeFile = new File(fileName).length();
-        String[] formats= ".".split(fileName);
-        String checkFormat=formats[formats.length-1];
-        if (Objects.equals(checkFormat, "txt")){
-           throw new IllegalArgumentException("format is not txt");
+        String[] formats = ".".split(fileName);
+        String checkFormat = formats[formats.length - 1];
+        if (Objects.equals(checkFormat, "txt")) {
+            throw new IllegalArgumentException("format is not txt");
         }
     }
 
@@ -49,6 +63,10 @@ public class FileTxtMessage extends Message {
 
     public String getTextFile() {
         return textFile;
+    }
+
+    public String getDescriptionFile() {
+        return descriptionFile;
     }
 
     public void setTextFile(String textFile) {

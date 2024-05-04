@@ -14,23 +14,43 @@ import static java.util.Objects.requireNonNull;
  * Устанавливает соединение между сервером и клиентом
  */
 public class ReceivingAndSendingMessage implements AutoCloseable {
-    private Socket socket;  //Для установки соединения между клиентом и сервером нужен сокет
 
+    /**
+     * Счетчик подключений к серверу.
+     */
     private static int idGlobalConnection;
     /**
      * Номер подключения к серверу.
      */
     private final int idConnection;
-    private final ObjectInputStream inputStream; //Для получения сообщения
-    private final ObjectOutput outputStream; //Для отправки сообщения
+    /**
+     * Канал для получения информации.
+     */
+    private final ObjectInputStream inputStream;
+    /**
+     * Канал для отправки информации.
+     */
+    private final ObjectOutput outputStream;
 
+    /**
+     * Конструктор создает канал для отправки и получения сообщений.
+     *
+     * @param socket Соединение
+     * @throws IOException если возникает ошибка передачи данных
+     */
     public ReceivingAndSendingMessage(Socket socket) throws IOException {
         requireNonNull(socket);
         outputStream = new ObjectOutputStream(socket.getOutputStream());
-        inputStream = new ObjectInputStream(socket.getInputStream()); //инпут создается после аутпута, т.к. иначе инпут заблокирует инпут, т.к. канал будет ждать получения сообщения
+        inputStream = new ObjectInputStream(socket.getInputStream());
         idConnection = ++idGlobalConnection;
     }
 
+    /**
+     * Отправляет сообщение.
+     *
+     * @param message Сообщение
+     * @throws IOException Если произошла ошибка при отправке сообщения
+     */
     public void send(Message message) throws IOException {
         if (nonNull(message)) {
             message.setTimeOfSending(LocalDateTime.now());
@@ -40,25 +60,21 @@ public class ReceivingAndSendingMessage implements AutoCloseable {
 
     }
 
-    public Message read() {
-        try {
-            return (Message) inputStream.readObject();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public int getIdConnection() {
-        return idConnection;
+    /**
+     * Принимает сообщение.
+     *
+     * @return Сообщение
+     * @throws IOException            Если произошла ошибка при получении сообщения
+     * @throws ClassNotFoundException Отсутствует класс принимаемого объекта
+     */
+    public Message read() throws IOException, ClassNotFoundException {
+        return (Message) inputStream.readObject();
     }
 
     @Override
     public void close() throws Exception {
         outputStream.close();
         inputStream.close();
-        socket.close();
     }
 
     @Override

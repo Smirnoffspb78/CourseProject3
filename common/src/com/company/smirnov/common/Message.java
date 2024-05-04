@@ -20,10 +20,11 @@ public class Message implements Serializable {
     /**
      * Имя отправителя
      */
-    private String sender;
+    private final String sender;
 
     /**
      * Конструктор создает сообщение.
+     *
      * @param sender Отправитель
      */
     public Message(String sender) {
@@ -40,10 +41,6 @@ public class Message implements Serializable {
 
     public String getSender() {
         return sender;
-    }
-
-    public void setSender(String sender) {
-        this.sender = requireNonNull(sender, "sender=null");
     }
 
     public void setTimeOfSending(LocalDateTime timeOfSending) {

@@ -2,16 +2,22 @@ package com.company.smirnov.server;
 
 import com.company.smirnov.common.Message;
 import com.company.smirnov.common.ReceivingAndSendingMessage;
+
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.List;
+import java.nio.file.Path;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static java.io.File.separator;
 import static java.lang.System.*;
 import static java.lang.System.Logger.Level.*;
+import static java.nio.file.Files.newBufferedReader;
 
 /**
  * Сервер.
@@ -26,7 +32,7 @@ public class Server {
     /**
      * Максимальная длина имени файла.
      */
-    private final int lengthName;
+    private final int maxLengthDescription;
 
     /**
      * Порт для соединения с сервером.
@@ -36,20 +42,30 @@ public class Server {
     /**
      * Список активных соединений с сервером.
      */
-    private final List<ReceivingAndSendingMessage> connectionHandlers = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<ReceivingAndSendingMessage> connectionHandlers = new CopyOnWriteArrayList<>();
     /**
      * Список сообщений для рассылки клиентам.
      */
     private final BlockingQueue<Message> messages = new ArrayBlockingQueue<>(1000, true);
 
-    public Server(int port, long maxSizeFile, int lengthName) {
-        if (maxSizeFile <= 0 || lengthName <= 0 || port <= 0) {
+    private final ConcurrentMap<String, String> nameFileAndDescription = new ConcurrentHashMap<>();
+
+    public Server(int port, long maxSizeFile, int maxLengthDescription) {
+        if (maxSizeFile < 0 || maxLengthDescription <= 0 || port <= 0) {
             throw new IllegalArgumentException(" maxSizeFile<=0; lengthName<=0");
         }
         this.port = port;
         this.maxSizeFile = maxSizeFile;
-        this.lengthName = lengthName;
-        /*Arrays.stream(RequestsServer.values()).forEach(requestServer -> serverMap.put(requestServer.getRequestName(), requestServer));*/
+        this.maxLengthDescription = maxLengthDescription;
+        try (BufferedReader readFilesAndDescription = newBufferedReader(Path.of(".%sserver%ssrc%sfiles%sdescription%sdescription.csv"
+                .formatted(separator, separator, separator, separator, separator)))) {
+            readFilesAndDescription
+                    .lines()
+                    .map(nameAndDescription -> nameAndDescription.split(";"))
+                    .forEach(nameAndDescription -> nameFileAndDescription.put(nameAndDescription[0], nameAndDescription[1]));
+        } catch (IOException e) {
+            logger.log(ERROR, "Не удалось загрузить список файлов или файлы на сервере отсутствуют");
+        }
     }
 
     public void startServer() {
@@ -59,16 +75,15 @@ public class Server {
                     Socket socket = serverSocket.accept();
                     ReceivingAndSendingMessage connectionHandler = new ReceivingAndSendingMessage(socket);
                     connectionHandlers.add(connectionHandler);
-                    out.println(connectionHandler.getIdConnection());
                     new ThreadForClient(connectionHandler, connectionHandlers, messages,
-                            maxSizeFile, lengthName).start();
+                            maxSizeFile, maxLengthDescription, nameFileAndDescription).start();
                 } catch (IOException e) {
                     logger.log(ERROR, "Ошибка запуска сервера");
                     return;
                 }
             }
         } catch (IOException e) {
-            logger.log(ERROR, "Порт% не доступен".formatted(port));
+            logger.log(ERROR, "Порт % не доступен".formatted(port));
         }
     }
 }

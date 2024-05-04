@@ -59,7 +59,7 @@ public class Client {
             reader.setDaemon(true);
             reader.start();
         } catch (IOException e) {
-            logger.log(WARNING, "Ошибка подключения к серверу.", e);
+            logger.log(WARNING, "Ошибка подключения к серверу.");
         }
     }
 }
