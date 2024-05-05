@@ -50,6 +50,12 @@ public class Server {
 
     private final ConcurrentMap<String, String> nameFileAndDescription = new ConcurrentHashMap<>();
 
+    /**
+     * Конструктор создает сервер
+     * @param port Номер порта
+     * @param maxSizeFile Максимальный размер файла, доступный для загрузки
+     * @param maxLengthDescription Максимальное количество символов для описания файла
+     */
     public Server(int port, long maxSizeFile, int maxLengthDescription) {
         if (maxSizeFile < 0 || maxLengthDescription <= 0 || port <= 0) {
             throw new IllegalArgumentException(" maxSizeFile<=0; lengthName<=0");
@@ -68,6 +74,9 @@ public class Server {
         }
     }
 
+    /**
+     * Запускает сервер.
+     */
     public void startServer() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             while (true) {

@@ -124,6 +124,11 @@ public class ThreadForClient extends Thread {
         }
     }
 
+    /**
+     * Вспомогательный метод отправляет файл клиенту
+     * @param fromClientFile файл для клиента
+     * @return сообщение для клиента
+     */
     private Message sendFile(Message fromClientFile) {
         Message message;
         if (nameFileAndDescription.containsKey(fromClientFile.getText())) {
@@ -143,7 +148,6 @@ public class ThreadForClient extends Thread {
         }
         return message;
     }
-
 
     /**
      * Вспомогательный метод, который проверяет наличие этого файла в директории
