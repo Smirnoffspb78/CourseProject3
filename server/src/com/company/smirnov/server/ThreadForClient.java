@@ -9,19 +9,15 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 import static java.io.File.separator;
 import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.Logger.Level.INFO;
 import static java.lang.System.Logger.Level.WARNING;
 import static java.lang.System.getLogger;
-import static java.lang.System.out;
 import static java.nio.file.Files.newBufferedReader;
 import static java.nio.file.Files.writeString;
 import static java.nio.file.Paths.get;
@@ -41,10 +37,6 @@ public class ThreadForClient extends Thread {
      * Активные соединения.
      */
     private final List<ReceivingAndSendingMessage> connectionHandlers;
-    /**
-     * Пул сообщений.
-     */
-    private final BlockingQueue<Message> messages;
 
     /**
      * Максимальный размер файла для загрузки, [мБ].
@@ -58,18 +50,17 @@ public class ThreadForClient extends Thread {
     /**
      * Хранит список наименований файлов и их описание.
      */
-    private final ConcurrentMap<String, String> nameFileAndDescription;
+    private final Map<String, String> nameFileAndDescription;
 
     /**
      * Имя сервера.
      */
     private static final String NAME_SERVER = "Server";
 
-    public ThreadForClient(ReceivingAndSendingMessage connectionHandler, CopyOnWriteArrayList<ReceivingAndSendingMessage> connectionHandlers,
-                           BlockingQueue<Message> messages, double maxSizeFile, int maxLengthDescription, ConcurrentMap<String, String> nameFileAndDescription) {
+    public ThreadForClient(ReceivingAndSendingMessage connectionHandler, List<ReceivingAndSendingMessage> connectionHandlers,
+                           double maxSizeFile, int maxLengthDescription, Map<String, String> nameFileAndDescription) {
         this.connectionHandler = requireNonNull(connectionHandler);
         this.connectionHandlers = requireNonNull(connectionHandlers);
-        this.messages = requireNonNull(messages);
         this.maxSizeFile = maxSizeFile;
         this.maxLengthDescription = maxLengthDescription;
         this.nameFileAndDescription = requireNonNull(nameFileAndDescription);
@@ -88,7 +79,7 @@ public class ThreadForClient extends Thread {
         } else {
             builderFilesDirectory.append("Файлы на сервере отсутствуют.");
         }
-        out.println(builderFilesDirectory);
+        logger.log(INFO, builderFilesDirectory);
         return builderFilesDirectory.toString();
     }
 
@@ -102,13 +93,13 @@ public class ThreadForClient extends Thread {
         Message message = new Message(NAME_SERVER);
         try {
             String fileName = checkFile(fileTxtMessage.getFileName());
-            writeString(get(".%sserver%ssrc%sfiles%s".formatted(separator, separator, separator, separator) + fileName),
+            writeString(get(".%sserver%ssrc%sfiles%s".replace("%s", separator) + fileName),
                     fileTxtMessage.getTextFile(),
                     CREATE,
                     APPEND,
                     SYNC);
             writeString(get(".%sserver%ssrc%sfiles%sdescription%sdescription.csv"
-                            .formatted(separator, separator, separator, separator, separator)),
+                            .replace("%s", separator)),
                     fileName + ";" + fileTxtMessage.getDescriptionFile() + "\n",
                     CREATE,
                     APPEND,
@@ -126,6 +117,7 @@ public class ThreadForClient extends Thread {
 
     /**
      * Вспомогательный метод отправляет файл клиенту
+     *
      * @param fromClientFile файл для клиента
      * @return сообщение для клиента
      */
@@ -153,12 +145,10 @@ public class ThreadForClient extends Thread {
      * Вспомогательный метод, который проверяет наличие этого файла в директории
      */
     private String checkFile(String nameFile) {
-        Set<String> allFilesSet = new CopyOnWriteArraySet<>();
-        nameFileAndDescription.forEach((key, value) -> allFilesSet.add(key));
-        if (allFilesSet.contains(nameFile)) {
+        if (nameFileAndDescription.containsKey(nameFile)) {
             int numberVersion = 0;
             String[] fileNameDivision = nameFile.split("\\.");
-            while (allFilesSet.contains(nameFile)) {
+            while (nameFileAndDescription.containsKey(nameFile)) {
                 StringBuilder newFileName = new StringBuilder();
                 Arrays.stream(fileNameDivision)
                         .limit((long) fileNameDivision.length - 1)
@@ -168,23 +158,6 @@ public class ThreadForClient extends Thread {
             }
         }
         return nameFile;
-    }
-
-    /**
-     * Вспомогательный метод добавляет сообщения в пул и создает объект для рассылки сообщения в новом потоке
-     *
-     * @param message    Сообщение
-     * @param allSending Флаг рассылки сообщений
-     *                   true - рассылается сообщение всем, кроме отправителя,
-     *                   false - отправляется сообщение только отправителю
-     */
-    private void sendMessage(Message message, boolean allSending) {
-        try {
-            messages.put(message); //метод будет заблокирован блокирующей очередью, если список переполнен
-        } catch (InterruptedException e) {
-            logger.log(WARNING, "Пул сообщений переполнен.");
-        }
-        new SendingMessagesOfClients(connectionHandler, message, allSending, connectionHandlers, messages).start();
     }
 
     @Override
@@ -202,14 +175,15 @@ public class ThreadForClient extends Thread {
                 connectionHandlers.remove(connectionHandler);
                 return;
             }
-            out.printf("%s: %s%n%s%n", fromClient.getSender(), fromClient.getTimeOfSending(), fromClient.getText());
+            logger.log(INFO, "%s: %s%n%s%n".formatted(fromClient.getSender(), fromClient.getTimeOfSending(), fromClient.getText()));
             Message message;
             if (Objects.equals(fromClient.getText(), downloadFileCommand)) {
                 message = new Message(NAME_SERVER);
-                if (((FileTxtMessage) fromClient).getSizeFile() <= maxSizeFile * 1_000_000
-                        && ((FileTxtMessage) fromClient).getDescriptionFile().length() < maxLengthDescription
-                        && !((FileTxtMessage) fromClient).getDescriptionFile().isBlank()) {
-                    message = downloadFile(((FileTxtMessage) fromClient));
+                if (fromClient instanceof FileTxtMessage fromClientTxt
+                        && fromClientTxt.checkSize(maxSizeFile*1_000_000)
+                        && fromClientTxt.getDescriptionFile().length() < maxLengthDescription
+                        && !fromClientTxt.getDescriptionFile().isBlank()) {
+                    message = downloadFile(fromClientTxt);
                 } else {
                     message.setText("Файл превышает %sМб или слишком длинный или отсутствует описание файла.".formatted(maxSizeFile));
                     allSending = false;
@@ -218,7 +192,7 @@ public class ThreadForClient extends Thread {
                 allSending = false;
                 Message messageFiles = new Message(NAME_SERVER);
                 messageFiles.setText("%sВведите имя файла для загрузки".formatted(computeFiles()));
-                sendMessage(messageFiles, allSending);
+                new SendingMessagesOfClients(connectionHandler, messageFiles, allSending, connectionHandlers).sendingMessage();
                 Message fromClientFile;
                 try {
                     fromClientFile = connectionHandler.read();
@@ -231,9 +205,9 @@ public class ThreadForClient extends Thread {
 
             } else {
                 message = new Message(fromClient.getSender());
-                message.setText(/*"%s: %s%n%s".formatted(fromClient.getSender(), fromClient.getTimeOfSending(), */fromClient.getText());
+                message.setText(fromClient.getText());
             }
-            sendMessage(message, allSending);
+            new SendingMessagesOfClients(connectionHandler, message, allSending, connectionHandlers).sendingMessage();
         }
     }
 }

@@ -18,7 +18,7 @@ public class FileTxtMessage extends Message {
     /**
      * Размер файла.
      */
-    private final long sizeFile;
+    private final double sizeFile;
     /**
      * Описание файла.
      */
@@ -53,7 +53,11 @@ public class FileTxtMessage extends Message {
         }
     }
 
-    public long getSizeFile() {
+    public boolean checkSize(double maxLength) {
+        return sizeFile <= maxLength;
+    }
+
+    public double getSizeFile() {
         return sizeFile;
     }
 

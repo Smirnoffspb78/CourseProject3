@@ -5,10 +5,16 @@ import com.company.smirnov.common.ReceivingAndSendingMessage;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-import static java.lang.System.*;
+import static java.lang.System.Logger.Level.INFO;
 import static java.lang.System.Logger.Level.WARNING;
+import static java.lang.System.getLogger;
+import static java.lang.System.in;
 import static java.util.Objects.requireNonNull;
 
 
@@ -27,6 +33,8 @@ public class Client {
      * Коннектор для взаимодействия с сервером.
      */
     private ReceivingAndSendingMessage connectionHandler;
+
+    List<String> fileNames=new CopyOnWriteArrayList<>();
 
     /**
      * Конструктор создает клиента, подключаемого к серверу.
@@ -50,7 +58,7 @@ public class Client {
      * Запуск клиентского соединения.
      */
     public void startClient() {
-        out.println("Введите имя");
+        logger.log(INFO, "Введите имя");
         String username = scanner.nextLine();
         try {
             createConnection();
