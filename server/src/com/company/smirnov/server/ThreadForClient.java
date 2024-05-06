@@ -4,30 +4,27 @@ import com.company.smirnov.common.FileTxtMessage;
 import com.company.smirnov.common.Message;
 import com.company.smirnov.common.ReceivingAndSendingMessage;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.BlockingQueue;
 
 import static java.io.File.separator;
 import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.Logger.Level.INFO;
-import static java.lang.System.Logger.Level.WARNING;
 import static java.lang.System.getLogger;
-import static java.nio.file.Files.newBufferedReader;
-import static java.nio.file.Files.writeString;
+import static java.nio.file.Files.*;
 import static java.nio.file.Paths.get;
 import static java.nio.file.StandardOpenOption.*;
+import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
 
 /**
  * Класс создает новый поток для работы с клиентом.
  */
 public class ThreadForClient extends Thread {
+
     private final System.Logger logger = getLogger(ThreadForClient.class.getName());
     /**
      * Соединение клиента с сервером.
@@ -91,22 +88,24 @@ public class ThreadForClient extends Thread {
      */
     private Message downloadFile(FileTxtMessage fileTxtMessage) {
         Message message = new Message(NAME_SERVER);
+        String fileName = checkFile(fileTxtMessage.getFileName());
         try {
-            String fileName = checkFile(fileTxtMessage.getFileName());
-            writeString(get(".%sserver%ssrc%sfiles%s".replace("%s", separator) + fileName),
-                    fileTxtMessage.getTextFile(),
-                    CREATE,
-                    APPEND,
-                    SYNC);
-            writeString(get(".%sserver%ssrc%sfiles%sdescription%sdescription.csv"
-                            .replace("%s", separator)),
-                    fileName + ";" + fileTxtMessage.getDescriptionFile() + "\n",
-                    CREATE,
-                    APPEND,
-                    WRITE,
-                    SYNC);
-            message.setText("На сервер добавлен файл %s; %s.".formatted(fileName, fileTxtMessage.getDescriptionFile()));
-            nameFileAndDescription.put(fileName, fileTxtMessage.getDescriptionFile());
+            write(get(".%sserver%ssrc%sfiles%s".replace("%s", separator) + fileName), fileTxtMessage.getTxtFile());
+            logger.log(INFO, "На сервер добавлен файл %s; %s.".formatted(fileName, fileTxtMessage.getDescriptionFile()));
+            try {
+                writeString(get(".%sserver%ssrc%sfiles%sdescription%sdescription.csv"
+                                .replace("%s", separator)),
+                        fileName + ";" + fileTxtMessage.getDescriptionFile() + "\n",
+                        CREATE,
+                        APPEND,
+                        WRITE,
+                        SYNC);
+                message.setText("На сервер добавлен файл %s; %s.".formatted(fileName, fileTxtMessage.getDescriptionFile()));
+                nameFileAndDescription.put(fileName, fileTxtMessage.getDescriptionFile());
+            } catch (IOException e) {
+                logger.log(ERROR, "Ошибка записи в реестр.");
+                message.setText("Ошибка записи в реестр.");
+            }
             return message;
         } catch (IOException e) {
             logger.log(ERROR, "Ошибка добавления файла.");
@@ -122,23 +121,22 @@ public class ThreadForClient extends Thread {
      * @return сообщение для клиента
      */
     private Message sendFile(Message fromClientFile) {
-        Message message;
         if (nameFileAndDescription.containsKey(fromClientFile.getText())) {
-            message = new FileTxtMessage(NAME_SERVER, fromClientFile.getText(), nameFileAndDescription.get(fromClientFile.getText()));
-            StringBuilder stringBuilderFile = new StringBuilder();
-            try (BufferedReader buffer = newBufferedReader(Path.of(".%sserver%ssrc%sfiles%s".formatted(separator, separator, separator, separator) + fromClientFile.getText()))) {
-                buffer
-                        .lines()
-                        .forEach(string -> stringBuilderFile.append(string).append("\n"));
-                message.setText(stringBuilderFile.toString());
+            FileTxtMessage message = new FileTxtMessage(NAME_SERVER, fromClientFile.getText(), nameFileAndDescription.get(fromClientFile.getText()));
+            try {
+                byte[] bytesFile = readAllBytes(Path.of(".%sserver%ssrc%sfiles%s".replace("%s", separator) + fromClientFile.getText()));
+                message.setTxtFile(bytesFile);
+                return message;
             } catch (IOException e) {
                 logger.log(ERROR, "Файл отсутствует или не доступен");
+                message.setText("Файл отсутствует или не доступен");
+                return message;
             }
         } else {
-            message = new Message(NAME_SERVER);
+            Message message = new Message(NAME_SERVER);
             message.setText("Файл на сервере отсутствует");
+            return message;
         }
-        return message;
     }
 
     /**
@@ -162,10 +160,9 @@ public class ThreadForClient extends Thread {
 
     @Override
     public void run() {
-        String downloadFileCommand = "/download";
-        String getNameFilesCommand = "/files";
         boolean allSending;
-        while (true) {
+        boolean checkConnectClient = true;
+        while (checkConnectClient) {
             allSending = true;
             Message fromClient;
             try {
@@ -173,41 +170,55 @@ public class ThreadForClient extends Thread {
             } catch (Exception e) {
                 logger.log(INFO, "Пользователь отключился от сервера");
                 connectionHandlers.remove(connectionHandler);
-                return;
+                checkConnectClient = false;
+                fromClient = null;
             }
-            logger.log(INFO, "%s: %s%n%s%n".formatted(fromClient.getSender(), fromClient.getTimeOfSending(), fromClient.getText()));
-            Message message;
-            if (Objects.equals(fromClient.getText(), downloadFileCommand)) {
-                message = new Message(NAME_SERVER);
-                if (fromClient instanceof FileTxtMessage fromClientTxt
-                        && fromClientTxt.checkSize(maxSizeFile*1_000_000)
-                        && fromClientTxt.getDescriptionFile().length() < maxLengthDescription
-                        && !fromClientTxt.getDescriptionFile().isBlank()) {
-                    message = downloadFile(fromClientTxt);
-                } else {
-                    message.setText("Файл превышает %sМб или слишком длинный или отсутствует описание файла.".formatted(maxSizeFile));
-                    allSending = false;
+            if (nonNull(fromClient)) {
+                logger.log(INFO, "%s: %s%n%s%n".formatted(fromClient.getSender(), fromClient.getTimeOfSending(), fromClient.getText()));
+                Message message = switch (fromClient.getText()) {
+                    case "/download" -> {
+                        message = new Message(NAME_SERVER);
+                        if (fromClient instanceof FileTxtMessage fromClientTxt
+                                && fromClientTxt.checkSize(maxSizeFile * 1_000_000, fromClientTxt.getDescriptionFile(), maxLengthDescription)) {
+                            message = downloadFile(fromClientTxt);
+                        } else {
+                            message.setText("Файл превышает %sМб или слишком длинный или отсутствует описание файла.".formatted(maxSizeFile));
+                            allSending = false;
+                        }
+                        yield (message);
+                    }
+                    case "/files" -> {
+                        allSending = false;
+                        Message messageFiles = new Message(NAME_SERVER);
+                        if (nameFileAndDescription.isEmpty()) {
+                            message = new Message(NAME_SERVER);
+                            message.setText(computeFiles());
+                        } else {
+                            messageFiles.setText("%sВведите имя файла для загрузки".formatted(computeFiles()));
+                            new SendingMessagesOfClients(connectionHandler, messageFiles, allSending, connectionHandlers).sendingMessage();
+                            Message fromClientFile;
+                            try {
+                                fromClientFile = connectionHandler.read();
+                                message = sendFile(fromClientFile);
+                            } catch (Exception e) {
+                                logger.log(INFO, "Пользователь отключился от сервера");
+                                connectionHandlers.remove(connectionHandler);
+                                checkConnectClient = false;
+                                message = null;
+                            }
+                        }
+                        yield (message);
+                    }
+                    default -> {
+                        message = new Message(fromClient.getSender());
+                        message.setText(fromClient.getText());
+                        yield (message);
+                    }
+                };
+                if (nonNull(message)) {
+                    new SendingMessagesOfClients(connectionHandler, message, allSending, connectionHandlers).sendingMessage();
                 }
-            } else if (Objects.equals(getNameFilesCommand, fromClient.getText())) {
-                allSending = false;
-                Message messageFiles = new Message(NAME_SERVER);
-                messageFiles.setText("%sВведите имя файла для загрузки".formatted(computeFiles()));
-                new SendingMessagesOfClients(connectionHandler, messageFiles, allSending, connectionHandlers).sendingMessage();
-                Message fromClientFile;
-                try {
-                    fromClientFile = connectionHandler.read();
-                    message = sendFile(fromClientFile);
-                } catch (Exception e) {
-                    logger.log(INFO, "Пользователь отключился от сервера");
-                    connectionHandlers.remove(connectionHandler);
-                    return;
-                }
-
-            } else {
-                message = new Message(fromClient.getSender());
-                message.setText(fromClient.getText());
             }
-            new SendingMessagesOfClients(connectionHandler, message, allSending, connectionHandlers).sendingMessage();
         }
     }
 }

@@ -4,17 +4,15 @@ import com.company.smirnov.common.FileTxtMessage;
 import com.company.smirnov.common.Message;
 import com.company.smirnov.common.ReceivingAndSendingMessage;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.Scanner;
-import java.util.logging.Logger;
 
 import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.getLogger;
 import static java.lang.System.in;
-import static java.nio.file.Files.newBufferedReader;
 import static java.lang.System.Logger.Level.INFO;
+import static java.nio.file.Files.readAllBytes;
+import static java.nio.file.Path.of;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
@@ -61,17 +59,14 @@ public class Writer extends Thread {
     private Message generateTxtMessage(String text) {
         logger.log(INFO, "Введите имя файла c расширением txt или полный путь к нему.");
         String pathFile = scanner.nextLine();
-        StringBuilder stringBuilder = new StringBuilder();
         FileTxtMessage message = null;
-        try (BufferedReader buffer = newBufferedReader(Path.of(pathFile))) {
-            buffer
-                    .lines()
-                    .forEach(string -> stringBuilder.append(string).append("\n"));
+        try {
             logger.log(INFO, "Введите описание файла");
             String descriptionFile = scanner.nextLine();
+            byte[] bytesFile=readAllBytes(of(pathFile));
             message = new FileTxtMessage(username, pathFile, descriptionFile);
+            message.setTxtFile(bytesFile);
             message.setText(text);
-            message.setTextFile(stringBuilder.toString());
         } catch (IOException e) {
             logger.log(INFO, "Файл не найден.");
         }

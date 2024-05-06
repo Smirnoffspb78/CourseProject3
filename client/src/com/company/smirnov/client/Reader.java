@@ -15,9 +15,8 @@ import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.Logger.Level.INFO;
 import static java.lang.System.getLogger;
 import static java.lang.System.out;
-import static java.nio.file.Files.writeString;
+import static java.nio.file.Files.write;
 import static java.nio.file.Paths.get;
-import static java.nio.file.StandardOpenOption.*;
 import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
 
@@ -49,30 +48,18 @@ class Reader extends Thread {
     /**
      * Вспомогательный метод, который проверяет наличие этого файла в директории
      */
-    private String checkFile(String nameFile) {
+    private Set<String> checkFile() {
         File directory = new File(directorySaveFile);
         File[] subFiles = directory.listFiles();
+        Set<String> allFilesSet = new HashSet<>();
         if (nonNull(subFiles)) {
-            Set<String> allFilesSet = new HashSet<>();
             Arrays.stream(subFiles).filter(File::isFile)
                     .map(File::toString)
                     .map(pathFile -> pathFile.split("\\\\"))
                     .map(pathFileDivision -> pathFileDivision[pathFileDivision.length - 1])
                     .forEach(allFilesSet::add);
-            if (allFilesSet.contains(nameFile)) {
-                int numberVersion = 0;
-                String[] fileNameDivision = nameFile.split("\\.");
-                while (allFilesSet.contains(nameFile)) {
-                    StringBuilder newFileName = new StringBuilder();
-                    Arrays.stream(fileNameDivision)
-                            .limit((long) fileNameDivision.length - 1)
-                            .forEach(newFileName::append);
-                    newFileName.append("(").append(++numberVersion).append(").").append(fileNameDivision[fileNameDivision.length - 1]);
-                    nameFile = newFileName.toString();
-                }
-            }
         }
-        return nameFile;
+        return allFilesSet;
     }
 
     @Override
@@ -82,7 +69,7 @@ class Reader extends Thread {
             try {
                 message = connectionHandler.read();
             } catch (Exception e) {
-                logger.log(ERROR,"Соединение с сервером прервано");
+                logger.log(ERROR, "Соединение с сервером прервано");
                 try {
                     connectionHandler.close();
                 } catch (Exception ex) {
@@ -91,18 +78,17 @@ class Reader extends Thread {
                 return;
             }
             if (message instanceof FileTxtMessage fileTxtMessage) {
-                try {
-                    String filename = fileTxtMessage.getFileName();
-                    filename = checkFile(filename);
-                    writeString(get(directorySaveFile
-                                    + filename),
-                            fileTxtMessage.getTextFile(),
-                            CREATE,
-                            APPEND,
-                            SYNC);
-                    logger.log(INFO,"Получен файл c сервера.");
-                } catch (IOException e) {
-                    logger.log(ERROR,"Не удалось загрузить файл.");
+                Set<String> allFiles = checkFile();
+                if (allFiles.contains(fileTxtMessage.getFileName())) {
+                    logger.log(ERROR, "Файл с таким именем уже существует");
+                } else {
+                    try {
+                        write(get(directorySaveFile
+                                + fileTxtMessage.getFileName()), fileTxtMessage.getTxtFile());
+                        logger.log(INFO, "Получен файл c сервера.");
+                    } catch (IOException e) {
+                        logger.log(ERROR, "Не удалось загрузить файл.");
+                    }
                 }
             } else {
                 out.printf("%s: %s%n%s%n", message.getSender(), message.getTimeOfSending(), message.getText());
