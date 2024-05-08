@@ -4,16 +4,18 @@ import com.company.smirnov.common.FileTxtMessage;
 import com.company.smirnov.common.Message;
 import com.company.smirnov.common.ReceivingAndSendingMessage;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Objects;
 import java.util.Scanner;
 
-import static java.lang.System.*;
-import static java.nio.file.Files.newBufferedReader;
+import static java.lang.System.Logger.Level.ERROR;
+import static java.lang.System.getLogger;
+import static java.lang.System.in;
 import static java.lang.System.Logger.Level.INFO;
-import static java.util.Objects.*;
+import static java.nio.file.Files.readAllBytes;
+import static java.nio.file.Path.of;
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  * Отправляет сообщения на сервер
@@ -55,19 +57,16 @@ public class Writer extends Thread {
      * @return сообщение для отправки на сервер
      */
     private Message generateTxtMessage(String text) {
-        out.println("Введите имя файла c расширением txt или полный путь к нему.");
+        logger.log(INFO, "Введите имя файла c расширением txt или полный путь к нему.");
         String pathFile = scanner.nextLine();
-        StringBuilder stringBuilder = new StringBuilder();
         FileTxtMessage message = null;
-        try (BufferedReader buffer = newBufferedReader(Path.of(pathFile))) {
-            buffer
-                    .lines()
-                    .forEach(string -> stringBuilder.append(string).append("\n"));
-            out.println("Введите описание файла");
+        try {
+            logger.log(INFO, "Введите описание файла");
             String descriptionFile = scanner.nextLine();
+            byte[] bytesFile=readAllBytes(of(pathFile));
             message = new FileTxtMessage(username, pathFile, descriptionFile);
+            message.setTxtFile(bytesFile);
             message.setText(text);
-            message.setTextFile(stringBuilder.toString());
         } catch (IOException e) {
             logger.log(INFO, "Файл не найден.");
         }
@@ -85,33 +84,37 @@ public class Writer extends Thread {
             if (nonNull(message)) {
                 connectionHandler.send(message);
             }
+            return true;
         } catch (IOException e) {
-            logger.log(INFO, "Соединение с сервером отсутствует");
+            logger.log(ERROR, "Соединение с сервером отсутствует");
+            try {
+                connectionHandler.close();
+            } catch (Exception ex) {
+                logger.log(ERROR, "Соединение отсутствует");
+            }
             return false;
         }
-        return true;
     }
 
     @Override
     public void run() {
         String exitCommand = "/exit";
         String downloadFileCommand = "/download";
-        String text = null;
+        String text;
         Message message;
-        out.println("Введите текст сообщения");
-        while (!Objects.equals(text, exitCommand)) {
+        boolean continueCommand = true;
+        logger.log(INFO, "Введите текст сообщения");
+        while (continueCommand) {
             text = scanner.nextLine();
-            if (!Objects.equals(text, exitCommand)) {
-                if (Objects.equals(text, downloadFileCommand)) {
-                    message = generateTxtMessage(text);
-                } else {
-                    message = new Message(username);
-                    message.setText(text);
-                }
-                if (!sendMessage(message)) {
-                    text = exitCommand;
-                }
+            if (text.equals(exitCommand)) {
+                message = null;
+            } else if (text.equals(downloadFileCommand)) {
+                message = generateTxtMessage(text);
+            } else {
+                message = new Message(username);
+                message.setText(text);
             }
+            continueCommand = sendMessage(message);
         }
     }
 }

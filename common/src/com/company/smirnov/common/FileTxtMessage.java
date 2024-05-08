@@ -8,7 +8,7 @@ import static java.util.Objects.requireNonNull;
 
 
 /**
- * Отправляет файлы
+ * Отправляет файлы.
  */
 public class FileTxtMessage extends Message {
     /**
@@ -18,15 +18,16 @@ public class FileTxtMessage extends Message {
     /**
      * Размер файла.
      */
-    private final long sizeFile;
+    private final double sizeFile;
     /**
      * Описание файла.
      */
     private final String descriptionFile;
+
     /**
-     * Содержимое файла
+     * Байтовое представление файла.
      */
-    private String textFile = "";
+    private byte[] txtFile;
 
     /**
      * Конструктор создает сообщение.
@@ -53,23 +54,23 @@ public class FileTxtMessage extends Message {
         }
     }
 
-    public long getSizeFile() {
-        return sizeFile;
+    public boolean checkSize(double maxLength, String descriptionFile, int maxLengthDescription) {
+        return (sizeFile <= maxLength && !descriptionFile.isBlank() && descriptionFile.length() < maxLengthDescription);
     }
 
     public String getFileName() {
         return fileName;
     }
 
-    public String getTextFile() {
-        return textFile;
-    }
-
     public String getDescriptionFile() {
         return descriptionFile;
     }
 
-    public void setTextFile(String textFile) {
-        this.textFile = requireNonNull(textFile);
+    public byte[] getTxtFile() {
+        return txtFile;
+    }
+
+    public void setTxtFile(byte[] txtFile) {
+        this.txtFile = requireNonNull(txtFile);
     }
 }
